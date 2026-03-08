@@ -262,18 +262,22 @@
 <div id="toast" class="toast">Copied to Clipboard!</div>
 
 <script>
-/** SECURITY: DISABLE SOURCE CODE VIEWING **/
-document.onkeydown = function(e) {
-    // Disable F12
-    if(event.keyCode == 123) return false;
-    // Disable Ctrl+Shift+I (Inspect)
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'I'.charCodeAt(0)) return false;
-    // Disable Ctrl+Shift+C (Inspect Element)
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'C'.charCodeAt(0)) return false;
-    // Disable Ctrl+Shift+J (Console)
-    if(e.ctrlKey && e.shiftKey && e.keyCode == 'J'.charCodeAt(0)) return false;
-    // Disable Ctrl+U (View Source)
-    if(e.ctrlKey && e.keyCode == 'U'.charCodeAt(0)) return false;
+// Security: Block DevTools (Windows & Mac Protection)
+document.onkeydown = (e) => {
+    // Prevent F12
+    if (e.keyCode == 123) return false;
+
+    // Prevent Ctrl + Shift + I/J/C (Windows/Linux)
+    if (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74 || e.keyCode == 67)) return false;
+
+    // Prevent Ctrl + U (View Source)
+    if (e.ctrlKey && e.keyCode == 85) return false;
+
+    // Prevent Cmd + Option + I/J/U/C (Mac)
+    if (e.metaKey && e.altKey && (e.keyCode == 73 || e.keyCode == 74 || e.keyCode == 85 || e.keyCode == 67)) return false;
+    
+    // Prevent Cmd + U (Mac View Source)
+    if (e.metaKey && e.keyCode == 85) return false;
 };
 
 function logout() {
