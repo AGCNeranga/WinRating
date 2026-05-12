@@ -36,12 +36,11 @@
             padding: 20px;
             min-height: 100vh;
             transition: all 0.3s ease;
-            /* Disable text selection except for inputs */
             user-select: none; 
         }
 
-        textarea, input, #output {
-            user-select: text; /* Allow users to copy/paste in these areas */
+        textarea, input, #output, #codeTable input {
+            user-select: text;
         }
 
         .container {
@@ -93,6 +92,53 @@
             color: var(--primary-green);
         }
 
+        /* NEW: Meeting Code Manager Styles */
+        .code-manager {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            background: var(--input-bg);
+            position: relative;
+        }
+
+        .code-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+            max-height: 200px;
+            overflow-y: auto;
+            margin-top: 15px;
+            padding: 10px;
+        }
+
+        .code-item {
+            display: flex;
+            gap: 5px;
+            background: var(--card-bg);
+            padding: 5px;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+
+        .code-item input {
+            width: 100%;
+            border: 1px solid var(--border-color);
+            border-radius: 4px;
+            padding: 4px;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .btn-sm { padding: 4px 8px; font-size: 0.7rem; }
+
+        /* Lock Overlay */
+        .manager-locked .m-code, .manager-locked .m-venue, .manager-locked .btn-logout {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        /* End New Styles */
+
         .save-indicator {
             font-size: 0.75rem;
             color: var(--primary-green);
@@ -133,10 +179,7 @@
             transition: border 0.2s;
         }
 
-        textarea:focus {
-            outline: none;
-            border-color: var(--primary-green);
-        }
+        textarea:focus { outline: none; border-color: var(--primary-green); }
 
         .controls {
             display: flex;
@@ -163,6 +206,7 @@
         .btn-yellow { background: var(--accent-yellow); color: #854d0e; }
         .btn-white { background: var(--card-bg); border: 1px solid var(--border-color); color: var(--text-dark); }
         .btn-logout { background: #fee2e2; color: #dc2626; border: 1px solid #fca5a5; }
+        .btn-wipe { background: #450a0a; color: #ffffff; border: 1px solid #000; }
         .btn:hover { opacity: 0.9; transform: translateY(-1px); }
 
         .output-header {
@@ -212,17 +256,19 @@
         }
 
         @media print {
-            .controls, .grid, .top-controls, .search-bar, .stats-bar { display: none !important; }
+            .controls, .grid, .top-controls, .search-bar, .stats-bar, .code-manager { display: none !important; }
             .container { box-shadow: none; border: none; padding: 0; }
             #output { border: none; background: white; color: black; }
         }
     </style>
 </head>
-<body oncontextmenu="return false;"> <div class="container">
+<body oncontextmenu="return false;"> 
+<div class="container">
     <header>
-                <h1>RATING OF THE DAY Windows Version <span style="font-weight: 300; color: var(--text-muted);">(UK)</span></h1><br>
-         <div class="top-controls">
+        <h1>RATING OF THE DAY Windows Version <span style="font-weight: 300; color: var(--text-muted);">(UK)</span></h1>
+        <div class="top-controls">
             <div id="saveStatus" class="save-indicator">✓ AUTO-SAVED</div>
+            <button class="btn btn-wipe" onclick="clearAll()" style="padding: 8px 15px;">🗑️ FULL WIPE</button>
             <button class="btn btn-white" onclick="toggleTheme()" style="padding: 8px 15px;">🌓 Mode</button>
             <button class="btn btn-logout" onclick="logout()" style="padding: 8px 15px;">🏠 Logout</button>
         </div>
@@ -231,6 +277,18 @@
     <div class="stats-bar">
         <div class="stat-card">Total Ratings: <span id="totalCount">0</span></div>
         <div class="stat-card" style="background: rgba(253, 224, 71, 0.1); border-color: var(--accent-yellow); color: var(--text-dark);">Successfully Matched: <span id="matchCount">0</span></div>
+    </div>
+
+    <div class="code-manager" id="managerBox">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 15px;">
+                <label style="font-weight: 700; font-size: 0.8rem; color: var(--text-muted);">Meeting Code Manager</label>
+                <button class="btn btn-white btn-sm" id="lockBtn" onclick="toggleLock()">🔓 Unlock to Edit</button>
+            </div>
+            <button class="btn btn-white btn-sm" id="addBtn" onclick="addCodeRow()" style="display:none;">+ Add New Code</button>
+        </div>
+        <div id="codeTable" class="code-grid manager-locked">
+            </div>
     </div>
 
     <div class="grid">
@@ -249,7 +307,7 @@
         <button class="btn btn-yellow" onclick="copyToClipboard()">📋 Copy</button>
         <button class="btn btn-white" onclick="downloadOutput()">💾 Save TXT</button>
         <button class="btn btn-white" onclick="window.print()">🖨️ Print Report</button>
-        <button class="btn btn-white" style="color: #dc2626;" onclick="clearAll()">🔄 Reset</button>
+        <button class="btn btn-white" style="color: #dc2626;" onclick="resetInputsOnly()">🔄 Reset Inputs</button>
     </div>
 
     <div class="output-header">
@@ -262,45 +320,44 @@
 <div id="toast" class="toast">Copied to Clipboard!</div>
 
 <script>
-// Security: Block DevTools (Windows & Mac Protection)
+// Security
 document.onkeydown = (e) => {
-    // Prevent F12
     if (e.keyCode == 123) return false;
-
-    // Prevent Ctrl + Shift + I/J/C (Windows/Linux)
     if (e.ctrlKey && e.shiftKey && (e.keyCode == 73 || e.keyCode == 74 || e.keyCode == 67)) return false;
-
-    // Prevent Ctrl + U (View Source)
     if (e.ctrlKey && e.keyCode == 85) return false;
-
-    // Prevent Cmd + Option + I/J/U/C (Mac)
     if (e.metaKey && e.altKey && (e.keyCode == 73 || e.keyCode == 74 || e.keyCode == 85 || e.keyCode == 67)) return false;
-    
-    // Prevent Cmd + U (Mac View Source)
     if (e.metaKey && e.keyCode == 85) return false;
 };
 
 function logout() {
     if(confirm("Are you sure you want to logout and return home?")) {
-        window.location.href = "https://agcneranga.github.io/LS-Publication/"; // Change this to your actual homepage URL
+        window.location.href = "https://agcneranga.github.io/LS-Publication/";
     }
 }
 
-/** DATA PROCESSING LOGIC **/
-const meetingCodes = {   
-    "CT": "CATTERICK",        "KM": "KEMPTON",        "LE": "LEICESTER",   "DR": "DONCASTER", 
-    "SO": "SOUTHWELL",        "LI": "LINGFIELD",      "KE": "KEMPTON",     "CH": "CHELTENHAM", 
-    "FAK": "FAKENHAM",        "WOL": "WOLVERHAMPTON", "GW": "GOWRAN PARK", "LP": "LEOPARDSTOWN",
-    "FH": "FAIRYHOUSE",       "CL": "CARLISLE",        "TA": "TAUNTON",    "AY": "AYR", 
-    "MR": "MARKET RASEN",     "CC": "CHELMSFORD CITY",  "NC": "NEWCASTLE", "NA": "NEWTON ABBOT", "CP": "CHEPSTOW"
-
-    
+// Initial Meeting Codes
+const defaultMeetingCodes = {   
+    "CT": "CATTERICK", "KM": "KEMPTON", "LE": "LEICESTER", "DR": "DONCASTER", 
+    "SO": "SOUTHWELL", "LI": "LINGFIELD", "KE": "KEMPTON", "CH": "CHELTENHAM", 
+    "FAK": "FAKENHAM", "WOL": "WOLVERHAMPTON", "GW": "GOWRAN PARK", "LP": "LEOPARDSTOWN",
+    "FH": "FAIRYHOUSE", "CL": "CARLISLE", "TA": "TAUNTON", "AY": "AYR", 
+    "MR": "MARKET RASEN", "CC": "CHELMSFORD CITY", "NC": "NEWCASTLE", "NA": "NEWTON ABBOT", "CP": "CHEPSTOW"
 };
 
+let activeMeetingCodes = {};
 let rawOutputLines = [];
+let isLocked = true;
 
 window.onload = () => {
+    // Load Theme
     if(localStorage.getItem('theme') === 'dark') document.body.setAttribute('data-theme', 'dark');
+    
+    // Load Codes
+    const savedCodes = localStorage.getItem('meetingCodes');
+    activeMeetingCodes = savedCodes ? JSON.parse(savedCodes) : defaultMeetingCodes;
+    renderCodeTable();
+
+    // Load Inputs
     if(localStorage.getItem('pdfData')) document.getElementById('pdfInput').value = localStorage.getItem('pdfData');
     if(localStorage.getItem('ratingData')) document.getElementById('ratingInput').value = localStorage.getItem('ratingData');
     if(localStorage.getItem('lastResult')) {
@@ -309,6 +366,56 @@ window.onload = () => {
         updateCounters();
     }
 };
+
+/** LOCK MANAGER LOGIC **/
+function toggleLock() {
+    isLocked = !isLocked;
+    const table = document.getElementById('codeTable');
+    const lockBtn = document.getElementById('lockBtn');
+    const addBtn = document.getElementById('addBtn');
+    
+    if(isLocked) {
+        table.classList.add('manager-locked');
+        lockBtn.textContent = "🔓 Unlock to Edit";
+        addBtn.style.display = "none";
+    } else {
+        table.classList.remove('manager-locked');
+        lockBtn.textContent = "🔒 Lock Changes";
+        addBtn.style.display = "block";
+    }
+}
+
+/** CODE MANAGER LOGIC **/
+function renderCodeTable() {
+    const container = document.getElementById('codeTable');
+    container.innerHTML = '';
+    Object.entries(activeMeetingCodes).forEach(([code, venue]) => {
+        addCodeRow(code, venue);
+    });
+}
+
+function addCodeRow(code = '', venue = '') {
+    const container = document.getElementById('codeTable');
+    const div = document.createElement('div');
+    div.className = 'code-item';
+    div.innerHTML = `
+        <input type="text" placeholder="Code" value="${code}" class="m-code" onchange="saveCodes()">
+        <input type="text" placeholder="Venue Name" value="${venue}" class="m-venue" onchange="saveCodes()">
+        <button class="btn-logout btn-sm" onclick="this.parentElement.remove(); saveCodes();">×</button>
+    `;
+    container.appendChild(div);
+}
+
+function saveCodes() {
+    const codes = {};
+    document.querySelectorAll('.code-item').forEach(item => {
+        const c = item.querySelector('.m-code').value.toUpperCase().trim();
+        const v = item.querySelector('.m-venue').value.toUpperCase().trim();
+        if(c) codes[c] = v;
+    });
+    activeMeetingCodes = codes;
+    localStorage.setItem('meetingCodes', JSON.stringify(codes));
+}
 
 function toggleTheme() {
     const isDark = document.body.getAttribute('data-theme') === 'dark';
@@ -324,6 +431,7 @@ function updateCounters() {
 }
 
 function processData() {
+    saveCodes(); 
     const pdfRaw = document.getElementById('pdfInput').value;
     const ratingRaw = document.getElementById('ratingInput').value;
     
@@ -337,23 +445,26 @@ function processData() {
         let text = line.trim();
         if (!text) return;
         const isExcluded = /[£€$¥\d+m\s\d+f]/.test(text) || ["DRAW", "GOING", "TRICAST", "PREVIOUS", "UPWARDS"].some(w => text.includes(w));
+        
         if (text === text.toUpperCase() && text.length > 3 && !text.includes('(') && !text.includes('/') && !isExcluded) {
             currentVenue = text;
         }
+
         let raceMatch = text.match(/([A-Z]+)\/(\d+)/i);
         if (raceMatch) {
             let shortCode = raceMatch[1].toUpperCase();
             currentRaceNum = raceMatch[2];
-            if (meetingCodes[shortCode]) currentVenue = meetingCodes[shortCode];
+            if (activeMeetingCodes[shortCode]) currentVenue = activeMeetingCodes[shortCode];
         }
+
         let timeMatch = text.match(/(\d+)\s*—\s*(\d+)/);
         if (timeMatch) {
             let hour = parseInt(timeMatch[1]);
             let minute = timeMatch[2];
-            // Convert to 24-hour format if hour is 1-11
             if (hour < 12) hour += 12;
             currentTime = hour + "." + minute;
         }
+
         let horseMatch = text.match(/\((\d+)\)\s+([A-Z\s'’]+)/);
         if (horseMatch) {
             let hName = horseMatch[2].trim().toUpperCase();
@@ -405,8 +516,20 @@ function copyToClipboard() {
     setTimeout(() => toast.style.display = 'none', 2000);
 }
 
+function resetInputsOnly() {
+    if(confirm("Clear all text areas? (Keeps Settings)")) {
+        document.getElementById('pdfInput').value = '';
+        document.getElementById('ratingInput').value = '';
+        document.getElementById('output').textContent = 'System Ready...';
+        localStorage.removeItem('pdfData');
+        localStorage.removeItem('ratingData');
+        localStorage.removeItem('lastResult');
+        updateCounters();
+    }
+}
+
 function clearAll() {
-    if(confirm("Wipe all data?")) {
+    if(confirm("DANGER: This will delete ALL data, Meeting Codes, and Settings. Proceed?")) {
         localStorage.clear();
         location.reload();
     }
@@ -422,7 +545,3 @@ function downloadOutput() {
 </script>
 </body>
 </html>
-
-
-
-
